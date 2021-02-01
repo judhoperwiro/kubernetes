@@ -1,0 +1,161 @@
+---
+- hosts: kubernetes_master
+  remote_user: redhat
+  become: true
+  tasks:
+    - name: 01. Create Group dbgrp
+      group:
+        name: k8sadm
+        gid: 5100
+
+    - name: 02. Create User
+      user:
+        name: k8sadm
+        password: "{{ 'k8sadm' | password_hash('sha512', 'mysecretsalt')}}"
+        shell: /bin/bash
+        uid: 5101
+        group: k8sadm
+        expires: -1
+        home: /home/k8sadm
+
+    - name: 03. set users password valid time
+      shell: chage -I -1 -m 0 -M 99999 -E -1 k8sadm
+
+    - name: 04. Add kubernetes user
+      shell: |
+        echo k8sadm | passwd --stdin k8sadm
+        echo "k8sadm        ALL=(ALL)       ALL" >> /etc/sudoers
+
+    - name: 05. prepare Source dir
+      file:
+        path: /Source
+        owner: root
+        group: root
+        mode: 0777
+        state: directory
+
+    - name: 06. transfer kubernetes.tar file
+      copy:
+        src: /data/ansible/kubernetes/source/rpm-packages.tar.gz
+        dest: /Source
+
+    - name: 07. Extract tar files
+      unarchive:
+        src: /Source/rpm-packages.tar.gz
+        dest: /Source/
+        mode: 0777
+        remote_src: yes
+
+    - name: 08. Install Packages
+      yum:
+        name:
+        - yum-utils
+        - policycoreutils-python
+        - libseccomp
+        state: present
+
+    - name: 09. Install Docker file drivers
+      yum:
+        name:
+        - /Source/rpm-packages/docker/dm/device-mapper-persistent-data-0.8.5-2.el7.x86_64.rpm
+        - /Source/rpm-packages/docker/dm/libaio-0.3.109-13.el7.x86_64.rpm
+        - /Source/rpm-packages/docker/lvm2/device-mapper-1.02.164-7.el7_8.1.x86_64.rpm
+        - /Source/rpm-packages/docker/lvm2/device-mapper-event-1.02.164-7.el7_8.1.x86_64.rpm
+        - /Source/rpm-packages/docker/lvm2/device-mapper-event-libs-1.02.164-7.el7_8.1.x86_64.rpm
+        - /Source/rpm-packages/docker/lvm2/device-mapper-libs-1.02.164-7.el7_8.1.x86_64.rpm
+        - /Source/rpm-packages/docker/lvm2/device-mapper-persistent-data-0.8.5-2.el7.x86_64.rpm
+        - /Source/rpm-packages/docker/lvm2/libaio-0.3.109-13.el7.x86_64.rpm
+        - /Source/rpm-packages/docker/lvm2/lvm2-2.02.186-7.el7_8.1.x86_64.rpm
+        - /Source/rpm-packages/docker/lvm2/lvm2-libs-2.02.186-7.el7_8.1.x86_64.rpm
+        state: present
+
+    - name: 10. Install Container-selinux
+      yum:
+        name:
+        - /Source/rpm-packages/docker/se/container-selinux-2.99-1.el7_6.noarch.rpm
+
+    - name: 11. Install Docker
+      yum:
+        name:
+        - /Source/rpm-packages/docker/docker-ce/containerd.io-1.2.13-3.1.el7.x86_64.rpm
+        - /Source/rpm-packages/docker/docker-ce/docker-ce-19.03.8-3.el7.x86_64.rpm
+        - /Source/rpm-packages/docker/docker-ce/docker-ce-cli-19.03.8-3.el7.x86_64.rpm
+
+    - name: 12. Enable and start docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: 13. Install Firewalld
+      yum:
+        name:
+        - /Source/rpm-packages/firewalld/ebtables-2.0.10-16.el7.x86_64.rpm
+        - /Source/rpm-packages/firewalld/firewalld-0.6.3-8.el7_8.1.noarch.rpm
+        - /Source/rpm-packages/firewalld/firewalld-filesystem-0.6.3-8.el7_8.1.noarch.rpm
+        - /Source/rpm-packages/firewalld/ipset-7.1-1.el7.x86_64.rpm
+        - /Source/rpm-packages/firewalld/ipset-libs-7.1-1.el7.x86_64.rpm
+        - /Source/rpm-packages/firewalld/python-firewall-0.6.3-8.el7_8.1.noarch.rpm
+        - /Source/rpm-packages/firewalld/python-slip-0.4.0-4.el7.noarch.rpm
+        - /Source/rpm-packages/firewalld/python-slip-dbus-0.4.0-4.el7.noarch.rpm
+        state: present
+
+    - name: 14. Stop and disable firewalld service
+      systemd:
+        name: firewalld
+        state: stopped
+        enabled: no
+
+    - name: 15. Install Kubernetes
+      yum:
+        name:
+        - /Source/rpm-packages/kubernetes/14bfe6e75a9efc8eca3f638eb22c7e2ce759c67f95b43b16fae4ebabde1549f3-cri-tools-1.13.0-0.x86_64.rpm
+        - /Source/rpm-packages/kubernetes/2c6d2fa074d044b3c58ce931349e74c25427f173242c6a5624f0f789e329bc75-kubeadm-1.17.0-0.x86_64.rpm
+        - /Source/rpm-packages/kubernetes/548a0dcd865c16a50980420ddfa5fbccb8b59621179798e6dc905c9bf8af3b34-kubernetes-cni-0.7.5-0.x86_64.rpm
+        - /Source/rpm-packages/kubernetes/7d9e0a47eb6eaf5322bd45f05a2360a033c29845543a4e76821ba06becdca6fd-kubelet-1.17.0-0.x86_64.rpm
+        - /Source/rpm-packages/kubernetes/bf67b612b185159556555b03e1e3a1ac5b10096afe48e4a7b7f5f9c4542238eb-kubectl-1.17.0-0.x86_64.rpm
+        - /Source/rpm-packages/kubernetes/conntrack-tools-1.4.4-7.el7.x86_64.rpm
+        - /Source/rpm-packages/kubernetes/ebtables-2.0.10-16.el7.x86_64.rpm
+        - /Source/rpm-packages/kubernetes/libnetfilter_cthelper-1.0.0-11.el7.x86_64.rpm
+        - /Source/rpm-packages/kubernetes/libnetfilter_cttimeout-1.0.0-7.el7.x86_64.rpm
+        - /Source/rpm-packages/kubernetes/libnetfilter_queue-1.0.2-2.el7_2.x86_64.rpm
+        - /Source/rpm-packages/kubernetes/socat-1.7.3.2-2.el7.x86_64.rpm
+        - /Source/rpm-packages/kubernetes/yum-utils-1.1.31-54.el7_8.noarch.rpm
+        state: present
+
+    - name: 16. Enable and start kubelet service
+      systemd:
+        name: kubelet
+        state: started
+        enabled: yes
+
+    - name: 17. Turn Off Swap
+      shell: |
+        swapoff -a
+        sed -e '/swap/ s/^#*/#/' -i /etc/fstab 
+        
+    - name: 18. Permanently Disable Swap
+      replace:
+        path: /etc/fstab
+        regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+        replace: '# \1'
+
+    - name: 19. Add the user k8sadm to docker
+      user:
+        name: k8sadm
+        uid: 5101
+        group: docker
+
+    - name: 20. Install kubernetes Images and Kubernetes Network
+      shell: |
+        docker load -i /Source/rpm-packages/kube-images/coredns:1.6.5.tar
+        docker load -i /Source/rpm-packages/kube-images/etcd:3.4.3-0.tar
+        docker load -i /Source/rpm-packages/kube-images/kube-apiserver:v1.17.0.tar
+        docker load -i /Source/rpm-packages/kube-images/kube-controller-manager:v1.17.0.tar
+        docker load -i /Source/rpm-packages/kube-images/kube-proxy:v1.17.0.tar
+        docker load -i /Source/rpm-packages/kube-images/kube-scheduler:v1.17.0.tar
+        docker load -i /Source/rpm-packages/kube-images/pause:3.1.tar
+        docker load -i /Source/rpm-packages/kube-network/cni:v3.8.8-1.tar
+        docker load -i /Source/rpm-packages/kube-network/kube-controllers:v3.8.8.tar
+        docker load -i /Source/rpm-packages/kube-network/node:v3.8.8-1.tar
+        docker load -i /Source/rpm-packages/kube-network/pod2daemon-flexvol:v3.8.8.tar
