@@ -1,0 +1,10 @@
+###############KUBERNETES_WORKER###################
+
+[kubernetes_worker]
+hostname-machine-01
+
+[kubernetes_worker:vars]
+ansible_user=redhat
+ansible_ssh_pass=TN@Cld01rhel123;
+ansible_sudo_pass=TN@Cld01rhel123;
+join_token=###KUBERNETES JOIN TOKEN###
