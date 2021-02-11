@@ -14,4 +14,4 @@ vi inventory
 ```
 ### 2.) Run Ansible Playbook  
 ```shell 
-ansible-playbook -i inventory install-elasticsearch-7-8-0.yaml
+ansible-playbook -i inventory install-kubernetes-worker-1-17-0.yaml
